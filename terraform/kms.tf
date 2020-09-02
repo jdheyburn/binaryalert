@@ -29,6 +29,37 @@ data "aws_iam_policy_document" "kms_allow_s3" {
   }
 }
 
+// Allow SNS to encrypt with either SSE key (to encrypt inventory or to enqueue SQS)
+data "aws_iam_policy_document" "kms_allow_sns" {
+  statement {
+    sid = "Enable IAM User Permissions"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${var.aws_account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "AllowS3ToUseKey"
+
+    principals {
+      type        = "Service"
+      identifiers = ["s3.amazonaws.com"]
+    }
+
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey*",
+    ]
+
+    resources = ["*"]
+  }
+}
+
 // KMS key for server-side encryption (SSE) of S3
 resource "aws_kms_key" "sse_s3" {
   description         = "BinaryAlert Server-Side Encryption - S3"
@@ -80,3 +111,19 @@ resource "aws_kms_alias" "encrypt_credentials_alias" {
   target_key_id = aws_kms_key.carbon_black_credentials[0].key_id
 }
 
+// KMS key for server-side encryption (SSE) of SNS
+resource "aws_kms_key" "sse_sns" {
+  description         = "BinaryAlert Server-Side Encryption - SNS"
+  enable_key_rotation = true
+
+  tags = {
+    Name = var.tagged_name
+  }
+
+  policy = data.aws_iam_policy_document.kms_allow_s3.json
+}
+
+resource "aws_kms_alias" "sse_sqs_alias" {
+  name          = "alias/${var.name_prefix}_binaryalert_sse_sqs"
+  target_key_id = aws_kms_key.sse_sqs.key_id
+}
